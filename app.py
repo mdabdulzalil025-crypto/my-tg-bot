@@ -16,7 +16,7 @@ def run_flask():
     app.run(host='0.0.0.0', port=os.getenv("PORT", 8080))
 
 # --- কনফিগারেশন (Environment Variables থেকে আসবে) ---
-BOT_TOKEN = "8641483673:AAEpclw3nauQWDlSwm2-3stfO1Gq5A358VM"
+BOT_TOKEN = "8641483673:AAEpclw3nauQWD1Swm2-3stf0lGq5A358VM"
 ADMIN_ID = 6665467890
 
 # এখানে আপনার গ্রুপের লিংকগুলো দিন
