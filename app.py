@@ -5,7 +5,7 @@ from threading import Thread
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ApplicationBuilder, CommandHandler, CallbackQueryHandler, MessageHandler, filters, ContextTypes
 
-# Flask App for Health Check (Koyeb এর জন্য প্রয়োজন)
+# Flask App for Health Check
 app = Flask('')
 
 @app.route('/')
@@ -15,11 +15,11 @@ def home():
 def run_flask():
     app.run(host='0.0.0.0', port=os.getenv("PORT", 8080))
 
-# --- কনফিগারেশন (Environment Variables থেকে আসবে) ---
+# --- কনফিগারেশন ---
 BOT_TOKEN = "8641483673:AAEpclw3nauQWD1Swm2-3stf0lGq5A358VM"
-ADMIN_ID = 6665467890
+ADMIN_ID = 6665467890  # আপনার এডমিন আইডি এখানে দিন
 
-# এখানে আপনার গ্রুপের লিংকগুলো দিন
+# গ্রুপের লিংকগুলো
 PO_VIP_LINK = "https://t.me/+v2r2SypmLiw4Yjk1"
 QX_VIP_LINK = "https://t.me/+Iwm9dRAlyLI2YmI1"
 
@@ -36,9 +36,11 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
+    data = query.data
+    user_id = query.from_user.id
     await query.answer()
 
-    if query.data == 'join_vip':
+    if data == 'join_vip':
         keyboard = [
             [InlineKeyboardButton("PocketOption VIP Group", callback_data='po_info')],
             [InlineKeyboardButton("Quotex VIP Group", callback_data='qx_info')],
@@ -46,43 +48,75 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         ]
         await query.edit_message_text("কোন ভিআইপি গ্রুপে জয়েন হতে চান?", reply_markup=InlineKeyboardMarkup(keyboard))
 
-    elif query.data == 'po_info':
+    elif data == 'po_info':
         await query.message.reply_text(f"পকেটঅপশনে একাউন্ট করতে এই লিংকে ক্লিক করুন: {PO_REF_LINK}\n\nএকাউন্ট করার পর আপনার ট্রেডার আইডিটি সাবমিট করুন।")
     
-    elif query.data == 'qx_info':
+    elif data == 'qx_info':
         await query.message.reply_text(f"কোটেক্স-এ একাউন্ট করতে এই লিংকে ক্লিক করুন: {QX_REF_LINK}\n\nএকাউন্ট করার পর আপনার ট্রেডার আইডিটি সাবমিট করুন।")
 
-    elif query.data == 'already_account':
+    elif data == 'already_account':
         keyboard = [
             [InlineKeyboardButton("PocketOption ID জমা দিন", callback_data='submit_po')],
             [InlineKeyboardButton("Quotex ID জমা দিন", callback_data='submit_qx')]
         ]
         await query.edit_message_text("কোন সাইটের আইডি জমা দিতে চান?", reply_markup=InlineKeyboardMarkup(keyboard))
 
-    elif query.data.startswith('submit_'):
-        platform = "PocketOption" if "po" in query.data else "Quotex"
-        # ইউজারের পছন্দের প্ল্যাটফর্ম সেভ করে রাখা হচ্ছে
+    elif data.startswith('submit_'):
+        platform = "PocketOption" if "po" in data else "Quotex"
         context.user_data['platform'] = platform
         await query.message.reply_text(f"আপনার {platform} ID টি এখানে টাইপ করে পাঠিয়ে দিন।")
 
-    # এডমিন যখন Approve বাটনে ক্লিক করবে
-    elif query.data.startswith('approve_'):
-        # তথ্য সংগ্রহ: approve_USERID_PLATFORM
-        _, target_user_id, platform = query.data.split('_')
+    # --- এডমিন আইডি ভেরিফিকেশন সেকশন ---
+    elif data.startswith('approve_id_'):
+        _, _, target_id, platform = data.split('_')
+        keyboard = [[InlineKeyboardButton("আমি ডিপোজিট সম্পন্ন করেছি ✅", callback_data=f"done_dep_{platform}")]]
+        await context.bot.send_message(
+            chat_id=target_id,
+            text=f"✅ আপনার {platform} আইডি ভেরিফাই করা হয়েছে!\n\nএখন ভিআইপি গ্রুপে জয়েন হওয়ার জন্য আপনার একাউন্টে কমপক্ষে $50 ডিপোজিট করুন। ডিপোজিট শেষ হলে নিচের বাটনে ক্লিক করুন।",
+            reply_markup=InlineKeyboardMarkup(keyboard)
+        )
+        await query.edit_message_text(f"ইউজার {target_id}-এর আইডি Approve করা হয়েছে।")
+
+    elif data.startswith('reject_id_'):
+        _, _, target_id, platform = data.split('_')
+        await context.bot.send_message(chat_id=target_id, text=f"❌ দুঃখিত, আপনার {platform} আইডিটি সঠিক নয়। অনুগ্রহ করে সঠিক আইডি আবার সাবমিট করুন।")
+        await query.edit_message_text(f"ইউজার {target_id}-এর আইডি Reject করা হয়েছে।")
+
+    # --- ডিপোজিট কনফার্মেশন (ইউজার দ্বারা) ---
+    elif data.startswith('done_dep_'):
+        platform = data.split('_')[2]
+        username = query.from_user.username or "N/A"
         
-        if platform == "PocketOption":
-            link = PO_VIP_LINK
-        else:
-            link = QX_VIP_LINK
-            
-        try:
-            await context.bot.send_message(
-                chat_id=target_user_id, 
-                text=f"✅ অভিনন্দন! আপনার {platform} আইডিটি ভেরিফাই করা হয়েছে।\n\nনিচের লিংকে ক্লিক করে ভিআইপি গ্রুপে জয়েন করুন:\n{link}"
-            )
-            await query.edit_message_text(f"ইউজার {target_user_id}-কে {platform} গ্রুপের লিংক পাঠানো হয়েছে।")
-        except Exception as e:
-            await query.edit_message_text(f"Error: {e}")
+        admin_keyboard = [
+            [InlineKeyboardButton("Approve Deposit ✅", callback_data=f"app_dep_{user_id}_{platform}")],
+            [InlineKeyboardButton("Reject Deposit ❌", callback_data=f"rej_dep_{user_id}_{platform}")]
+        ]
+        
+        await context.bot.send_message(
+            chat_id=ADMIN_ID,
+            text=f"💰 **ডিপোজিট নোটিশ!**\n\nইউজার আইডি: {user_id}\nইউজারনেম: @{username}\nপ্ল্যাটফর্ম: {platform}\n\nইউজার দাবি করেছে সে $50 ডিপোজিট করেছে। চেক করে দেখুন।",
+            reply_markup=InlineKeyboardMarkup(admin_keyboard)
+        )
+        await query.edit_message_text("আপনার ডিপোজিট রিকোয়েস্ট এডমিনের কাছে পাঠানো হয়েছে। চেক করার পর আপনাকে গ্রুপের লিংক দেওয়া হবে।")
+
+    # --- এডমিন ডিপোজিট ভেরিফিকেশন সেকশন ---
+    elif data.startswith('app_dep_'):
+        _, _, target_id, platform = data.split('_')
+        link = PO_VIP_LINK if platform == "PocketOption" else QX_VIP_LINK
+        
+        await context.bot.send_message(
+            chat_id=target_id,
+            text=f"🎊 অভিনন্দন! আপনার ডিপোজিট ভেরিফাই করা হয়েছে।\n\nনিচের লিংকে ক্লিক করে ভিআইপি গ্রুপে জয়েন করুন:\n{link}"
+        )
+        await query.edit_message_text(f"ইউজার {target_id}-এর ডিপোজিট এপ্রুভ হয়েছে এবং লিংক পাঠানো হয়েছে।")
+
+    elif data.startswith('rej_dep_'):
+        _, _, target_id, platform = data.split('_')
+        await context.bot.send_message(
+            chat_id=target_id,
+            text="❌ আপনার ডিপোজিটটি এখনো সম্পন্ন হয়নি অথবা সিস্টেমে পাওয়া যায়নি।\n\nদয়া করে সঠিকভাবে ডিপোজিট করে পুনরায় জানান অথবা এডমিনের সাথে যোগাযোগ করুন।"
+        )
+        await query.edit_message_text(f"ইউজার {target_id}-এর ডিপোজিট রিজেক্ট করা হয়েছে।")
 
 async def handle_id_submission(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if 'platform' in context.user_data:
@@ -91,12 +125,14 @@ async def handle_id_submission(update: Update, context: ContextTypes.DEFAULT_TYP
         username = update.message.from_user.username or "N/A"
         submitted_id = update.message.text
 
-        # এডমিনের কাছে মেসেজ পাঠানো (প্ল্যাটফর্ম অনুযায়ী আলাদা বাটন)
-        admin_keyboard = [[InlineKeyboardButton(f"Approve {platform} ✅", callback_data=f"approve_{user_id}_{platform}")]]
+        admin_keyboard = [
+            [InlineKeyboardButton("Approve ID ✅", callback_data=f"approve_id_{user_id}_{platform}")],
+            [InlineKeyboardButton("Reject ID ❌", callback_data=f"reject_id_{user_id}_{platform}")]
+        ]
         
         await context.bot.send_message(
             chat_id=ADMIN_ID,
-            text=(f"📩 নতুন আইডি জমা পড়েছে!\n\n"
+            text=(f"📩 **নতুন আইডি জমা পড়েছে!**\n\n"
                   f"প্ল্যাটফর্ম: {platform}\n"
                   f"ট্রেডার আইডি: {submitted_id}\n"
                   f"টেলিগ্রাম ইউজার: @{username}\n"
@@ -104,17 +140,20 @@ async def handle_id_submission(update: Update, context: ContextTypes.DEFAULT_TYP
             reply_markup=InlineKeyboardMarkup(admin_keyboard)
         )
         
-        await update.message.reply_text(f"আপনার {platform} আইডিটি এডমিনের কাছে পাঠানো হয়েছে। ভেরিফাই করার পর আপনাকে গ্রুপের লিংক দেওয়া হবে।")
+        await update.message.reply_text(f"আপনার {platform} আইডিটি এডমিনের কাছে পাঠানো হয়েছে। আইডি ভেরিফিকেশনের পর আপনাকে ডিপোজিট প্রসেস জানানো হবে।")
         del context.user_data['platform']
 
 def main():
+    # Flask Health Check thread
     Thread(target=run_flask).start()
+    
     application = ApplicationBuilder().token(BOT_TOKEN).build()
     
     application.add_handler(CommandHandler('start', start))
     application.add_handler(CallbackQueryHandler(button_handler))
     application.add_handler(MessageHandler(filters.TEXT & (~filters.COMMAND), handle_id_submission))
     
+    print("Bot is starting...")
     application.run_polling()
 
 if __name__ == '__main__':
