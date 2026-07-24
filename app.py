@@ -5,36 +5,34 @@ from threading import Thread
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ApplicationBuilder, CommandHandler, CallbackQueryHandler, MessageHandler, filters, ContextTypes
 
-# Flask App for Health Check
+# Logging setup (Render এর লগ দেখার জন্য জরুরি)
+logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
+
 app = Flask('')
 
 @app.route('/')
 def home():
-    return "Bot is Running!"
+    # একদম ছোট রেসপন্স যাতে cron-job এ সমস্যা না হয়
+    return "OK", 200
 
 def run_flask():
-    app.run(host='0.0.0.0', port=os.getenv("PORT", 8080))
+    port = int(os.environ.get("PORT", 8080))
+    app.run(host='0.0.0.0', port=port)
 
-# --- কনফিগারেশন ---
-BOT_TOKEN = "8641483673:AAEpclw3nauQWD1Swm2-3stf0lGq5A358VM"
-ADMIN_ID = 6665467890  # আপনার এডমিন আইডি
+# --- কনফিগারেশন (Environment Variables থেকে নেওয়া ভালো) ---
+BOT_TOKEN = "8641483673:AAGhYvt8z_mIOgzUQ4QyLWR15AvttFnAZwQ"
+ADMIN_ID = 6665467890 
 
-# গ্রুপের লিংকগুলো
 PO_VIP_LINK = "https://t.me/+v2r2SypmLiw4Yjk1"
 QX_VIP_LINK = "https://t.me/+Iwm9dRAlyLI2YmI1"
-
-# রেফারেল লিংক
 PO_REF_LINK = "https://shorturl.at/lw0Tz"
 QX_REF_LINK = "https://tinywebs.site/Lb38KA"
 
-# সাধারণ ইন্সট্রাকশন টেক্সট
-RESTART_TEXT = "\n\n🔄 পুনরায় শুরু করতে বা তথ্য যাচাই করতে নিচে /start বাটনে ক্লিক করুন অথবা টাইপ করুন।"
+RESTART_TEXT = "\n\n🔄 পুনরায় শুরু করতে /start বাটনে ক্লিক করুন।"
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     keyboard = [[InlineKeyboardButton("আমি VIP গ্রুপে জয়েন হতে চাই", callback_data='join_vip')]]
-    # start কমান্ড দিলে আগের তথ্য ক্লিয়ার হবে
     context.user_data.clear() 
-    
     await update.message.reply_text(
         "স্বাগতম! আমাদের ভিআইপি গ্রুপে জয়েন হওয়ার জন্য নিচের বাটনে ক্লিক করুন।" + RESTART_TEXT,
         reply_markup=InlineKeyboardMarkup(keyboard)
@@ -72,13 +70,12 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         context.user_data['platform'] = platform
         await query.message.reply_text(f"আপনার {platform} ID টি এখানে টাইপ করে পাঠিয়ে দিন।" + RESTART_TEXT)
 
-    # --- এডমিন আইডি ভেরিফিকেশন সেকশন ---
     elif data.startswith('approve_id_'):
         _, _, target_id, platform = data.split('_')
         keyboard = [[InlineKeyboardButton("আমি ডিপোজিট সম্পন্ন করেছি ✅", callback_data=f"done_dep_{platform}")]]
         await context.bot.send_message(
             chat_id=target_id,
-            text=f"✅ আপনার {platform} আইডি ভেরিফাই করা হয়েছে!\n\nএখন ভিআইপি গ্রুপে জয়েন হওয়ার জন্য আপনার একাউন্টে কমপক্ষে $50 ডিপোজিট করুন। ডিপোজিট শেষ হলে নিচের বাটনে ক্লিক করুন।" + RESTART_TEXT,
+            text=f"✅ আপনার {platform} আইডি ভেরিফাই করা হয়েছে!\n\nএখন ভিআইপি গ্রুপে জয়েন হতে কমপক্ষে $50 ডিপোজিট করুন এবং নিচের বাটনে ক্লিক করুন।" + RESTART_TEXT,
             reply_markup=InlineKeyboardMarkup(keyboard)
         )
         await query.edit_message_text(f"ইউজার {target_id}-এর আইডি Approve করা হয়েছে।")
@@ -88,41 +85,30 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await context.bot.send_message(chat_id=target_id, text=f"❌ দুঃখিত, আপনার {platform} আইডিটি সঠিক নয়। অনুগ্রহ করে সঠিক আইডি আবার সাবমিট করুন।" + RESTART_TEXT)
         await query.edit_message_text(f"ইউজার {target_id}-এর আইডি Reject করা হয়েছে।")
 
-    # --- ডিপোজিট কনফার্মেশন ---
     elif data.startswith('done_dep_'):
         platform = data.split('_')[2]
         username = query.from_user.username or "N/A"
-        
         admin_keyboard = [
             [InlineKeyboardButton("Approve Deposit ✅", callback_data=f"app_dep_{user_id}_{platform}")],
             [InlineKeyboardButton("Reject Deposit ❌", callback_data=f"rej_dep_{user_id}_{platform}")]
         ]
-        
         await context.bot.send_message(
             chat_id=ADMIN_ID,
-            text=f"💰 **ডিপোজিট নোটিশ!**\n\nইউজার আইডি: {user_id}\nইউজারনেম: @{username}\nপ্ল্যাটফর্ম: {platform}\n\nইউজার দাবি করেছে সে $50 ডিপোজিট করেছে। চেক করে দেখুন।",
+            text=f"💰 **ডিপোজিট নোটিশ!**\n\nইউজার: {user_id} (@{username})\nপ্ল্যাটফর্ম: {platform}\n\nচেক করে দেখুন।",
             reply_markup=InlineKeyboardMarkup(admin_keyboard)
         )
-        await query.edit_message_text("আপনার ডিপোজিট রিকোয়েস্ট এডমিনের কাছে পাঠানো হয়েছে। চেক করার পর আপনাকে জানানো হবে।" + RESTART_TEXT)
+        await query.edit_message_text("আপনার ডিপোজিট রিকোয়েস্ট পাঠানো হয়েছে। চেক করার পর জানানো হবে।" + RESTART_TEXT)
 
-    # --- এডমিন ডিপোজিট ভেরিফিকেশন ---
     elif data.startswith('app_dep_'):
         _, _, target_id, platform = data.split('_')
         link = PO_VIP_LINK if platform == "PocketOption" else QX_VIP_LINK
-        
-        await context.bot.send_message(
-            chat_id=target_id,
-            text=f"🎊 অভিনন্দন! আপনার ডিপোজিট ভেরিফাই করা হয়েছে।\n\nনিচের লিংকে ক্লিক করে ভিআইপি গ্রুপে জয়েন করুন:\n{link}" + RESTART_TEXT
-        )
+        await context.bot.send_message(chat_id=target_id, text=f"🎊 অভিনন্দন! আপনার ডিপোজিট ভেরিফাই হয়েছে।\nলিংক: {link}" + RESTART_TEXT)
         await query.edit_message_text(f"ইউজার {target_id}-এর ডিপোজিট এপ্রুভ হয়েছে।")
 
     elif data.startswith('rej_dep_'):
         _, _, target_id, platform = data.split('_')
-        await context.bot.send_message(
-            chat_id=target_id,
-            text="❌ আপনার ডিপোজিটটি এখনো সম্পন্ন হয়নি। দয়া করে সঠিকভাবে ডিপোজিট করে পুনরায় জানান।" + RESTART_TEXT
-        )
-        await query.edit_message_text(f"ইউজার {target_id}-এর ডিপোজিট রিজেক্ট করা হয়েছে।")
+        await context.bot.send_message(chat_id=target_id, text="❌ ডিপোজিট সম্পন্ন হয়নি। দয়া করে আবার চেষ্টা করুন।" + RESTART_TEXT)
+        await query.edit_message_text(f"ইউজার {target_id}-এর ডিপোজিট রিজেক্ট হয়েছে।")
 
 async def handle_id_submission(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if 'platform' in context.user_data:
@@ -130,29 +116,18 @@ async def handle_id_submission(update: Update, context: ContextTypes.DEFAULT_TYP
         user_id = update.message.from_user.id
         username = update.message.from_user.username or "N/A"
         submitted_id = update.message.text
-
-        admin_keyboard = [
-            [InlineKeyboardButton("Approve ID ✅", callback_data=f"approve_id_{user_id}_{platform}")],
-            [InlineKeyboardButton("Reject ID ❌", callback_data=f"reject_id_{user_id}_{platform}")]
-        ]
-        
-        await context.bot.send_message(
-            chat_id=ADMIN_ID,
-            text=(f"📩 **নতুন আইডি জমা পড়েছে!**\n\n"
-                  f"প্ল্যাটফর্ম: {platform}\n"
-                  f"ট্রেডার আইডি: {submitted_id}\n"
-                  f"টেলিগ্রাম ইউজার: @{username}\n"
-                  f"ইউজার আইডি: {user_id}"),
-            reply_markup=InlineKeyboardMarkup(admin_keyboard)
-        )
-        
-        await update.message.reply_text(f"আপনার {platform} আইডিটি এডমিনের কাছে পাঠানো হয়েছে। আইডি ভেরিফিকেশনের পর আপনাকে পরবর্তী ধাপ জানানো হবে।" + RESTART_TEXT)
-        del context.user_data['platform']
+        admin_keyboard = [[InlineKeyboardButton("Approve ID ✅", callback_data=f"approve_id_{user_id}_{platform}"), 
+                           InlineKeyboardButton("Reject ID ❌", callback_data=f"reject_id_{user_id}_{platform}")]]
+        await context.bot.send_message(chat_id=ADMIN_ID, text=f"📩 **নতুন আইডি!**\n\nপ্ল্যাটফর্ম: {platform}\nID: {submitted_id}\nইউজার: @{username}", reply_markup=InlineKeyboardMarkup(admin_keyboard))
+        await update.message.reply_text(f"আপনার {platform} আইডিটি ভেরিফিকেশনের জন্য পাঠানো হয়েছে।" + RESTART_TEXT)
+        context.user_data.pop('platform', None)
 
 def main():
-    Thread(target=run_flask).start()
-    application = ApplicationBuilder().token(BOT_TOKEN).build()
+    # Flask Thread শুরু করা
+    Thread(target=run_flask, daemon=True).start()
     
+    # Telegram Bot শুরু করা
+    application = ApplicationBuilder().token(BOT_TOKEN).build()
     application.add_handler(CommandHandler('start', start))
     application.add_handler(CallbackQueryHandler(button_handler))
     application.add_handler(MessageHandler(filters.TEXT & (~filters.COMMAND), handle_id_submission))
